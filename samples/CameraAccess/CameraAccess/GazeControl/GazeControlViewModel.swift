@@ -132,9 +132,10 @@ class GazeControlViewModel: ObservableObject {
 
   private func applySmoothedPoint(_ raw: CGPoint) {
     let screenSize = cursorBridge.remoteScreenSize ?? CGSize(width: 1920, height: 1080)
+    let origin = cursorBridge.remoteScreenOrigin
     let clamped = CGPoint(
-      x: max(0, min(screenSize.width, raw.x)),
-      y: max(0, min(screenSize.height, raw.y))
+      x: max(origin.x, min(origin.x + screenSize.width, raw.x)),
+      y: max(origin.y, min(origin.y + screenSize.height, raw.y))
     )
 
     if let prev = smoothedPoint {

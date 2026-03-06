@@ -36,10 +36,30 @@ app = Flask(__name__)
 
 
 def get_screen_size():
-    display_id = Quartz.CGMainDisplayID()
-    width = Quartz.CGDisplayPixelsWide(display_id)
-    height = Quartz.CGDisplayPixelsHigh(display_id)
-    return width, height
+    """Return the bounding box of all displays in logical (point) coordinates.
+
+    Returns (origin_x, origin_y, width, height). The origin can be negative
+    when monitors extend to the left of or above the primary display.
+    """
+    max_displays = 16
+    (display_ids, count, err) = Quartz.CGGetActiveDisplayList(max_displays, None, None)
+    if err != 0 or count == 0:
+        # Fallback to primary
+        did = Quartz.CGMainDisplayID()
+        return (0, 0, Quartz.CGDisplayPixelsWide(did), Quartz.CGDisplayPixelsHigh(did))
+
+    min_x, min_y = float("inf"), float("inf")
+    max_x, max_y = float("-inf"), float("-inf")
+    for did in display_ids[:count]:
+        bounds = Quartz.CGDisplayBounds(did)
+        x, y = bounds.origin.x, bounds.origin.y
+        w, h = bounds.size.width, bounds.size.height
+        min_x = min(min_x, x)
+        min_y = min(min_y, y)
+        max_x = max(max_x, x + w)
+        max_y = max(max_y, y + h)
+
+    return (int(min_x), int(min_y), int(max_x - min_x), int(max_y - min_y))
 
 
 def move_mouse(x, y):
@@ -175,8 +195,8 @@ def handle_position():
 
 @app.route("/screen", methods=["GET"])
 def handle_screen():
-    w, h = get_screen_size()
-    return jsonify({"width": w, "height": h})
+    ox, oy, w, h = get_screen_size()
+    return jsonify({"origin_x": ox, "origin_y": oy, "width": w, "height": h})
 
 
 @app.route("/health", methods=["GET"])
@@ -204,30 +224,43 @@ class ScreenshotCache:
         self._screen_w = 0
         self._screen_h = 0
         self._scale_factor = 1.0
+        # Virtual screen offset (logical coords) — can be negative for multi-monitor
+        self._origin_x = 0
+        self._origin_y = 0
 
     def _refresh_if_needed(self):
         now = time.time()
         if now - self._last_refresh < self.refresh_interval:
             return
         with mss.mss() as sct:
-            monitor = sct.monitors[1]  # Primary monitor
-            capture_w = monitor["width"]
-            capture_h = monitor["height"]
+            # monitors[0] is the virtual screen spanning ALL monitors
+            monitor = sct.monitors[0]
+            origin_x = monitor["left"]
+            origin_y = monitor["top"]
             screenshot = sct.grab(monitor)
             img = np.array(screenshot)[:, :, :3]  # Drop alpha channel
             gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            # Get primary monitor width for Retina scale detection
+            primary_w = sct.monitors[1]["width"] if len(sct.monitors) > 1 else monitor["width"]
 
         # Detect Retina: mss captures at physical pixels, CGDisplay returns logical
         logical_w = Quartz.CGDisplayPixelsWide(Quartz.CGMainDisplayID())
-        scale = capture_w / logical_w if logical_w > 0 else 1.0
+        scale = primary_w / logical_w if logical_w > 0 else 1.0
+
+        # The captured image width is physical pixels of the virtual screen
+        # mss monitor coords are already in logical (point) units on macOS
+        # but the captured image is at physical pixel resolution
+        img_h, img_w = gray.shape[:2]
 
         kp, desc = self.orb.detectAndCompute(gray, None)
         with self._lock:
             self._keypoints = kp
             self._descriptors = desc
-            self._screen_w = capture_w
-            self._screen_h = capture_h
+            self._screen_w = img_w
+            self._screen_h = img_h
             self._scale_factor = scale
+            self._origin_x = origin_x
+            self._origin_y = origin_y
             self._last_refresh = now
 
     def locate(self, camera_jpeg_bytes, min_matches=15):
@@ -244,6 +277,8 @@ class ScreenshotCache:
             screen_kp = list(self._keypoints)
             screen_desc = self._descriptors.copy()
             scale = self._scale_factor
+            origin_x = self._origin_x
+            origin_y = self._origin_y
 
         # Decode camera JPEG
         nparr = np.frombuffer(camera_jpeg_bytes, np.uint8)
@@ -287,15 +322,16 @@ class ScreenshotCache:
         sx = float(screen_pt[0][0][0])
         sy = float(screen_pt[0][0][1])
 
-        # Convert from physical pixels to logical pixels (Retina)
-        sx /= scale
-        sy /= scale
+        # Convert from physical pixels to logical pixels and add virtual screen offset
+        # This gives us global CGEvent coordinates (primary display origin = 0,0)
+        sx = origin_x + sx / scale
+        sy = origin_y + sy / scale
 
-        # Clamp to logical screen bounds
+        # Clamp to virtual screen bounds
         logical_w = self._screen_w / scale
         logical_h = self._screen_h / scale
-        sx = max(0, min(logical_w, sx))
-        sy = max(0, min(logical_h, sy))
+        sx = max(origin_x, min(origin_x + logical_w, sx))
+        sy = max(origin_y, min(origin_y + logical_h, sy))
 
         confidence = inliers / len(good) if good else 0.0
         return (sx, sy, inliers, confidence)
@@ -336,8 +372,8 @@ def handle_locate():
 
 
 if __name__ == "__main__":
-    w, h = get_screen_size()
-    print(f"[CursorServer] Screen: {w}x{h}")
+    ox, oy, w, h = get_screen_size()
+    print(f"[CursorServer] Virtual screen: {w}x{h} at origin ({ox}, {oy})")
     print(f"[CursorServer] Accessibility: {Quartz.CoreGraphics.CGPreflightPostEventAccess()}")
     print(f"[CursorServer] Starting on http://0.0.0.0:8765")
     app.run(host="0.0.0.0", port=8765, threaded=True)

@@ -11,6 +11,7 @@ enum CursorServerConnectionState: Equatable {
 class CursorControlBridge: ObservableObject {
   @Published var connectionState: CursorServerConnectionState = .disconnected
   @Published var remoteScreenSize: CGSize?
+  @Published var remoteScreenOrigin: CGPoint = .zero  // Can be negative for multi-monitor
 
   private let session: URLSession
   private let pingSession: URLSession
@@ -60,7 +61,10 @@ class CursorControlBridge: ObservableObject {
          let w = json["width"] as? Double,
          let h = json["height"] as? Double {
         remoteScreenSize = CGSize(width: w, height: h)
-        NSLog("[GazeCursor] Screen size: %.0fx%.0f", w, h)
+        let ox = json["origin_x"] as? Double ?? 0
+        let oy = json["origin_y"] as? Double ?? 0
+        remoteScreenOrigin = CGPoint(x: ox, y: oy)
+        NSLog("[GazeCursor] Screen size: %.0fx%.0f origin: (%.0f, %.0f)", w, h, ox, oy)
       }
     } catch {
       NSLog("[GazeCursor] Failed to get screen size: %@", error.localizedDescription)
