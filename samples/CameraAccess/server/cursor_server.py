@@ -943,9 +943,13 @@ class GazeTracker:
 
             pixel_scale = np.sqrt(abs(det))
 
+            # Use simple screen/camera ratio (no pixel_scale multiplier).
+            # pixel_scale from homography determinant is noisy and causes
+            # the offset to overshoot screen bounds. The offset is already
+            # in camera-pixel space, so a fixed ratio suffices.
             scr_ox, scr_oy, scr_w, scr_h = get_screen_size()
-            cam_to_screen_x = scr_w / anchor["frame_w"] * pixel_scale
-            cam_to_screen_y = scr_h / anchor["frame_h"] * pixel_scale
+            cam_to_screen_x = scr_w / anchor["frame_w"]
+            cam_to_screen_y = scr_h / anchor["frame_h"]
 
             sx = anchor["screen_x"] + offset_x * cam_to_screen_x
             sy = anchor["screen_y"] + offset_y * cam_to_screen_y
@@ -967,20 +971,10 @@ class GazeTracker:
         avg_x = sum(c[0] * c[2] for c in top) / total_inliers
         avg_y = sum(c[1] * c[2] for c in top) / total_inliers
         avg_conf = sum(c[3] * c[2] for c in top) / total_inliers
-        best_scale = top[0][4]  # sqrt(det) from best anchor
-
-        # Full camera-to-screen scale for optical flow.
-        # Anchor matching uses: cam_to_screen = scr_dim / frame_dim * sqrt(det)
-        # Previously _scale_factor was just sqrt(det) (~1.0), missing the
-        # scr/frame ratio (~4x). This made subtle head movements invisible.
+        # Camera-to-screen scale for optical flow: simple ratio, no det-based
+        # pixel_scale which was noisy and caused wild jumps.
         scr_ox2, scr_oy2, scr_w2, scr_h2 = get_screen_size()
-        new_sf = (scr_w2 / cam_w + scr_h2 / cam_h) / 2.0 * best_scale
-        # EMA smoothing to prevent wild scale jumps from noisy homographies
-        alpha = 0.15  # Slow adaptation — scale shouldn't change rapidly
-        if self._scale_factor < 0.5:
-            self._scale_factor = new_sf  # First time, jump to value
-        else:
-            self._scale_factor = alpha * new_sf + (1.0 - alpha) * self._scale_factor
+        self._scale_factor = (scr_w2 / cam_w + scr_h2 / cam_h) / 2.0
         return (avg_x, avg_y, total_inliers, avg_conf)
 
     def _compute_optical_flow(self, prev_gray, curr_gray):
