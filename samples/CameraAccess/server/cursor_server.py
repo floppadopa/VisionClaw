@@ -353,10 +353,11 @@ class GazeTracker:
     smooth inter-frame tracking.
     """
 
-    CALIBRATION_POINTS_9 = [
-        (0.15, 0.15), (0.5, 0.15), (0.85, 0.15),  # top row
-        (0.15, 0.5),  (0.5, 0.5),  (0.85, 0.5),   # middle row
-        (0.15, 0.85), (0.5, 0.85), (0.85, 0.85),   # bottom row
+    # Per-display offsets: 3 dots per display (top-left area, center, bottom-right area)
+    _PER_DISPLAY_OFFSETS = [
+        (0.2, 0.2),   # top-left area
+        (0.5, 0.5),   # center
+        (0.8, 0.8),   # bottom-right area
     ]
 
     def __init__(self):
@@ -365,10 +366,7 @@ class GazeTracker:
         self._anchors = []
         self._calibrating = False
         self._cal_index = 0  # Current calibration point index
-        self._cal_screen_ox = 0
-        self._cal_screen_oy = 0
-        self._cal_screen_w = 0
-        self._cal_screen_h = 0
+        self._cal_points = []  # List of (abs_x, abs_y) for calibration dots
 
         # Runtime state
         self._prev_gray = None  # Previous camera frame for optical flow
@@ -382,33 +380,50 @@ class GazeTracker:
     def is_calibrated(self):
         return len(self._anchors) >= 4
 
+    @staticmethod
+    def _generate_calibration_points():
+        """Generate calibration dot positions: 3 per physical display."""
+        max_displays = 16
+        (err, display_ids, count) = Quartz.CGGetActiveDisplayList(max_displays, None, None)
+        if err != 0 or count == 0:
+            # Fallback to primary
+            did = Quartz.CGMainDisplayID()
+            w = Quartz.CGDisplayPixelsWide(did)
+            h = Quartz.CGDisplayPixelsHigh(did)
+            return [(int(w * 0.5), int(h * 0.5))]
+
+        points = []
+        for did in display_ids[:count]:
+            bounds = Quartz.CGDisplayBounds(did)
+            dx, dy = bounds.origin.x, bounds.origin.y
+            dw, dh = bounds.size.width, bounds.size.height
+            for (nx, ny) in GazeTracker._PER_DISPLAY_OFFSETS:
+                px = int(dx + nx * dw)
+                py = int(dy + ny * dh)
+                points.append((px, py))
+        return points
+
     # -- Calibration --
 
     def start_calibration(self):
         """Begin calibration sequence. Returns the first dot position."""
+        cal_points = self._generate_calibration_points()
         with self._lock:
             self._anchors = []
             self._calibrating = True
             self._cal_index = 0
-            # Use full virtual screen bounds (all monitors)
-            ox, oy, w, h = get_screen_size()
-            self._cal_screen_ox = ox
-            self._cal_screen_oy = oy
-            self._cal_screen_w = w
-            self._cal_screen_h = h
+            self._cal_points = cal_points
             self._prev_gray = None
             self._current_pos = None
 
         # Show first dot
-        nx, ny = self.CALIBRATION_POINTS_9[0]
-        sx = int(self._cal_screen_ox + nx * self._cal_screen_w)
-        sy = int(self._cal_screen_oy + ny * self._cal_screen_h)
+        sx, sy = cal_points[0]
         show_calibration_dot(sx, sy)
-        print(f"[Calibrate] Started. Point 0: ({sx}, {sy}) "
-              f"[screen: {w}x{h} at ({ox},{oy})]", flush=True)
+        print(f"[Calibrate] Started. {len(cal_points)} points across "
+              f"{len(cal_points) // 3} displays. Point 0: ({sx}, {sy})", flush=True)
         return {
             "point_index": 0,
-            "total_points": len(self.CALIBRATION_POINTS_9),
+            "total_points": len(cal_points),
             "screen_x": sx,
             "screen_y": sy,
         }
@@ -419,7 +434,7 @@ class GazeTracker:
             return {"error": "Not calibrating"}
 
         idx = self._cal_index
-        if idx >= len(self.CALIBRATION_POINTS_9):
+        if idx >= len(self._cal_points):
             return {"error": "All points captured"}
 
         # Decode and extract features
@@ -429,14 +444,12 @@ class GazeTracker:
 
         feats = extract_features(gray)
 
-        # Store anchor (absolute screen coordinates including origin offset)
-        nx, ny = self.CALIBRATION_POINTS_9[idx]
-        sx = self._cal_screen_ox + nx * self._cal_screen_w
-        sy = self._cal_screen_oy + ny * self._cal_screen_h
+        # Store anchor (absolute screen coordinates)
+        sx, sy = self._cal_points[idx]
 
         anchor = {
-            "screen_x": sx,
-            "screen_y": sy,
+            "screen_x": float(sx),
+            "screen_y": float(sy),
             "keypoints": feats["keypoints"],
             "descriptors": feats["descriptors"],
             "frame_w": w,
@@ -448,20 +461,18 @@ class GazeTracker:
             self._cal_index = idx + 1
 
         n_kp = len(feats["keypoints"])
-        print(f"[Calibrate] Captured point {idx}: ({sx:.0f}, {sy:.0f}) "
+        print(f"[Calibrate] Captured point {idx}: ({sx}, {sy}) "
               f"with {n_kp} room features", flush=True)
 
         # Show next dot or finish
         next_idx = idx + 1
-        if next_idx < len(self.CALIBRATION_POINTS_9):
-            nx2, ny2 = self.CALIBRATION_POINTS_9[next_idx]
-            sx2 = int(self._cal_screen_ox + nx2 * self._cal_screen_w)
-            sy2 = int(self._cal_screen_oy + ny2 * self._cal_screen_h)
+        if next_idx < len(self._cal_points):
+            sx2, sy2 = self._cal_points[next_idx]
             show_calibration_dot(sx2, sy2)
             return {
                 "status": "captured",
                 "point_index": next_idx,
-                "total_points": len(self.CALIBRATION_POINTS_9),
+                "total_points": len(self._cal_points),
                 "screen_x": sx2,
                 "screen_y": sy2,
                 "features": n_kp,
@@ -469,7 +480,7 @@ class GazeTracker:
         else:
             return {
                 "status": "all_captured",
-                "total_points": len(self.CALIBRATION_POINTS_9),
+                "total_points": len(self._cal_points),
                 "features": n_kp,
             }
 
