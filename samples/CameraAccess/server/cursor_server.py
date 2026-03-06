@@ -255,10 +255,12 @@ class GazeKalmanFilter:
         self.x = np.zeros(4, dtype=np.float64)
         # State covariance
         self.P = np.eye(4, dtype=np.float64) * 1000.0
-        # Process noise (how much we expect position to change)
-        self.Q = np.diag([10.0, 10.0, 50.0, 50.0])
-        # Base measurement noise
-        self._base_R = 200.0
+        # Process noise: position changes through velocity (low),
+        # velocity can change (moderate). Tuned for ~300px raw noise.
+        self.Q = np.diag([2.0, 2.0, 20.0, 20.0])
+        # Base measurement noise — higher = smoother but laggier.
+        # Raw variance is ~300px, so R must be well above that.
+        self._base_R = 800.0
         self.initialized = False
         self._last_time = None
 
