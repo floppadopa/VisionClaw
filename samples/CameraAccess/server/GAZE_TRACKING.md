@@ -18,8 +18,8 @@ Anchor frames: ~150-350ms (feature extraction + matching, every 5th frame or >2s
 
 ## Layer 1: Environment Anchors (Calibrated)
 - 9 calibration points (3 per display)
-- SuperPoint 2048 keypoints per anchor, persisted to calibration.json
-- BFMatcher kNN with 0.75 ratio test (tight, reduces false matches)
+- SuperPoint 1024 keypoints per anchor, persisted to calibration.json
+- FLANN KD-tree matcher (O(log n) vs BFMatcher O(n), ~3x faster) with 0.75 ratio test
 - RANSAC homography (threshold 10.0), project camera center to anchor space
 - Top-3 anchor weighted average by inlier count for stability
 - Determinant sanity check (0.01 < det < 100.0)
@@ -27,9 +27,9 @@ Anchor frames: ~150-350ms (feature extraction + matching, every 5th frame or >2s
 
 ## Layer 2: Screen Content (Live)
 - Background thread captures per-monitor screenshots every 2s
-- SuperPoint features extracted, downscaled to max 1600px
+- SuperPoint features extracted, downscaled to max 1024px
 - Retina scale handling for HiDPI displays
-- BFMatcher kNN with 0.85 ratio test (more permissive for screen detail)
+- FLANN KD-tree matcher with 0.85 ratio test (more permissive for screen detail)
 - RANSAC homography (threshold 5.0, tighter for pixel-level accuracy)
 - Median of inlier screen-space points (more robust than camera center projection)
 - Preferred over anchors when confident (>= 15 inliers used exclusively)
@@ -40,10 +40,12 @@ Anchor frames: ~150-350ms (feature extraction + matching, every 5th frame or >2s
 - 200 corners, quality 0.01, min distance 10px, block size 7
 - Pyramid: 3 levels, window 21x21
 - Median displacement for robustness (rejects outliers from moving objects)
-- 1.5px dead zone for noise rejection (camera sensor + JPEG artifacts)
+- 1.0px dead zone for noise rejection (camera sensor + JPEG artifacts)
+- Full camera-to-screen scale: `(scr_w/cam_w + scr_h/cam_h) / 2 * sqrt(det)`
+- 0.6x damping factor to reduce drift from noise accumulation
 - Applied directly to Kalman state (not as measurement, as direct state offset)
+- Kalman velocity decayed 0.85x per flow frame to resist drift
 - Runs every frame for smooth inter-anchor tracking
-- Weakness: scale_factor derived from homography determinant is imprecise
 
 ## Fusion Strategy
 - Screen content weighted 3x in hybrid blend with env anchors
@@ -61,7 +63,7 @@ State: [x, y, vx, vy] — position + velocity model.
   - High confidence + many matches -> R = 240 (trusts measurement)
   - Low confidence + few matches -> R = 2000+ (ignores noisy measurement)
 - **Predict**: velocity model advances state between frames
-- **Flow integration**: optical flow deltas applied directly to state (not as measurements)
+- **Flow integration**: optical flow deltas applied directly to state (dampened 0.6x, velocity decayed 0.85x)
 - **Measurement update**: standard Kalman gain K = PH'(HPH'+R)^-1
 
 ## 60fps Cursor Interpolation (Critically Damped Spring)
@@ -85,10 +87,10 @@ Each frame (dt = 1/60):
   move_mouse(current)
 ```
 
-- **omega = 12**: natural frequency, controls response speed (~200ms to reach target)
+- **omega = 10**: natural frequency, controls response speed (~250ms to reach target)
 - **Critical damping (zeta = 1.0)**: reaches target as fast as possible without oscillation
 - **No velocity pulses**: unlike lerp which instantly changes velocity when target shifts, the spring smoothly accelerates/decelerates
-- **Dead zone (0.3px)**: stops micro-movements when settled, with velocity damping (0.8x per frame)
+- **Dead zone (1.0px)**: stops micro-movements when settled, with velocity damping (0.8x per frame)
 
 ### Why Spring > Lerp
 Lerp (`next = current + (target - current) * 0.25`) causes visible pulses because:
@@ -120,7 +122,10 @@ cursor movement commands (except during drag mode).
 5. **Kalman filter (R=200)** -> still 100-150px jitter, R too low
 6. **Kalman tuned (R=800, Q=[2,2,20,20])** -> ~50px jitter, much better
 7. **60fps lerp interpolation** -> eliminated discrete jumps, but velocity pulses visible
-8. **60fps critically damped spring (omega=12)** -> smooth, fast, no pulses. Final solution.
+8. **60fps critically damped spring (omega=12)** -> smooth, fast, no pulses
+9. **FLANN matcher + 480px resolution + predictive lead** -> ~3x faster matching, lower latency
+10. **Corrected scale factor (scr/cam ratio)** -> subtle head movements now register (was ~4x under-scaled)
+11. **Flow damping 0.6x + velocity decay 0.85x + omega=10** -> stable without losing responsiveness. Current solution.
 
 ## File Layout
 - `cursor_server.py` — Main server: Flask endpoints, GazeTracker, GazeKalmanFilter, interpolation
