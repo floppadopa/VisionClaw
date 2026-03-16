@@ -127,8 +127,8 @@ class OpenClawEventClient {
             put("id", UUID.randomUUID().toString())
             put("method", "connect")
             put("params", JSONObject().apply {
-                put("minProtocol", 1)
-                put("maxProtocol", 1)
+                put("minProtocol", 3)
+                put("maxProtocol", 3)
                 put("client", JSONObject().apply {
                     put("id", "gateway-client")
                     put("displayName", "VisionClaw Glass")
