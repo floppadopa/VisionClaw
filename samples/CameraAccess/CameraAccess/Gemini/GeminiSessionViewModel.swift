@@ -37,6 +37,7 @@ class GeminiSessionViewModel: ObservableObject {
     }
 
     isGeminiActive = true
+    RemoteLogger.shared.log("session:start")
 
     // Wire audio callbacks
     audioManager.onAudioCaptured = { [weak self] data in
@@ -61,6 +62,13 @@ class GeminiSessionViewModel: ObservableObject {
     geminiService.onTurnComplete = { [weak self] in
       guard let self else { return }
       Task { @MainActor in
+        // Log finalized transcripts before clearing
+        if !self.lastUserText.isEmpty {
+          RemoteLogger.shared.log("voice:user", data: ["text": self.lastUserText])
+        }
+        if !self.lastAIText.isEmpty {
+          RemoteLogger.shared.log("voice:ai", data: ["text": self.lastAIText])
+        }
         self.finalizeCurrentBubbles()
         self.userTranscript = ""
       }
@@ -109,12 +117,16 @@ class GeminiSessionViewModel: ObservableObject {
           self.messages.append(msg)
           let toolMsgId = msg.id
 
+          let taskDesc = (call.args["task"] as? String) ?? ""
+          RemoteLogger.shared.log("voice:tool_call", data: ["tool": call.name, "task": taskDesc])
+
           self.toolCallRouter?.handleToolCall(call) { [weak self] response in
             guard let self else { return }
             if let idx = self.messages.firstIndex(where: { $0.id == toolMsgId }) {
               self.messages[idx].text = "Done"
               self.messages[idx].status = .complete
             }
+            RemoteLogger.shared.log("voice:tool_result", data: ["tool": call.name, "result": String(response.prefix(500))])
             self.geminiService.sendToolResponse(response)
           }
         }
@@ -196,6 +208,7 @@ class GeminiSessionViewModel: ObservableObject {
   }
 
   func stopSession() {
+    RemoteLogger.shared.log("session:end")
     eventClient.disconnect()
     toolCallRouter?.cancelAll()
     toolCallRouter = nil
