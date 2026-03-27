@@ -107,6 +107,7 @@ class GeminiSessionViewModel: ObservableObject {
     // Check OpenClaw connectivity and start fresh session
     await openClawBridge.checkConnection()
     openClawBridge.resetSession()
+    openClawBridge.eventClient = eventClient
 
     // Wire tool call handling
     toolCallRouter = ToolCallRouter(bridge: openClawBridge)

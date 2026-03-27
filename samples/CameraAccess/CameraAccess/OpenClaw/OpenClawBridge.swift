@@ -13,6 +13,9 @@ class OpenClawBridge: ObservableObject {
   @Published var lastToolCallStatus: ToolCallStatus = .idle
   @Published var connectionState: OpenClawConnectionState = .notConfigured
 
+  /// Set by GeminiSessionViewModel so we can send image tasks via WebSocket
+  var eventClient: OpenClawEventClient?
+
   private let session: URLSession
   private let pingSession: URLSession
   private var sessionKey: String
@@ -75,27 +78,23 @@ class OpenClawBridge: ObservableObject {
   ) async -> ToolResult {
     lastToolCallStatus = .executing(toolName)
 
+    // If image is provided, route through WebSocket chat.send (only working method)
+    if let image = image, let jpegData = image.jpegData(compressionQuality: 0.8) {
+      let base64 = jpegData.base64EncodedString()
+      if let ec = eventClient {
+        NSLog("[OpenClaw] Sending image task via WebSocket chat.send (%d KB)", jpegData.count / 1024)
+        return await sendViaWebSocket(eventClient: ec, task: task, imageBase64: base64, toolName: toolName)
+      } else {
+        NSLog("[OpenClaw] Image task but no event client, falling back to text-only HTTP")
+      }
+    }
+
     guard let url = URL(string: "\(GeminiConfig.openClawHost):\(GeminiConfig.openClawPort)/v1/chat/completions") else {
       lastToolCallStatus = .failed(toolName, "Invalid URL")
       return .failure("Invalid gateway URL")
     }
 
-    // Build user message — text-only or multimodal (OpenAI vision format)
-    let userMessage: [String: Any]
-    if let image = image, let jpegData = image.jpegData(compressionQuality: 0.8) {
-      let base64 = jpegData.base64EncodedString()
-      userMessage = [
-        "role": "user",
-        "content": [
-          ["type": "text", "text": task],
-          ["type": "image_url", "image_url": ["url": "data:image/jpeg;base64,\(base64)"]]
-        ] as [[String: Any]]
-      ]
-      NSLog("[OpenClaw] Attaching image (%d KB) to task", jpegData.count / 1024)
-    } else {
-      userMessage = ["role": "user", "content": task]
-    }
-
+    let userMessage: [String: Any] = ["role": "user", "content": task]
     conversationHistory.append(userMessage)
 
     // Trim history to keep only the most recent turns (user+assistant pairs)
@@ -152,6 +151,37 @@ class OpenClawBridge: ObservableObject {
       NSLog("[OpenClaw] Agent error: %@", error.localizedDescription)
       lastToolCallStatus = .failed(toolName, error.localizedDescription)
       return .failure("Agent error: \(error.localizedDescription)")
+    }
+  }
+
+  /// Send a task with image via WebSocket chat.send RPC.
+  private func sendViaWebSocket(
+    eventClient: OpenClawEventClient,
+    task: String,
+    imageBase64: String,
+    toolName: String
+  ) async -> ToolResult {
+    await withCheckedContinuation { continuation in
+      eventClient.sendChatMessage(
+        sessionKey: sessionKey,
+        message: task,
+        imageBase64: imageBase64
+      ) { [weak self] reply in
+        guard let self else {
+          continuation.resume(returning: .failure("Session ended"))
+          return
+        }
+        if let reply {
+          self.conversationHistory.append(["role": "user", "content": task])
+          self.conversationHistory.append(["role": "assistant", "content": reply])
+          NSLog("[OpenClaw] WebSocket chat.send result: %@", String(reply.prefix(200)))
+          self.lastToolCallStatus = .completed(toolName)
+          continuation.resume(returning: .success(reply))
+        } else {
+          self.lastToolCallStatus = .failed(toolName, "WebSocket chat.send failed")
+          continuation.resume(returning: .failure("Failed to send image via WebSocket"))
+        }
+      }
     }
   }
 }
