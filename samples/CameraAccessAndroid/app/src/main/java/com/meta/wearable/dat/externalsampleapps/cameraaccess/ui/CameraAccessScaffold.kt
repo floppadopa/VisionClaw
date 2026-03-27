@@ -84,6 +84,7 @@ fun CameraAccessScaffold(
         uiState.isSettingsVisible ->
             SettingsScreen(
                 onBack = { viewModel.hideSettings() },
+                onDebugMenu = if (BuildConfig.DEBUG) {{ viewModel.showDebugMenu() }} else null,
             )
         uiState.isStreaming ->
             StreamScreen(
@@ -126,22 +127,13 @@ fun CameraAccessScaffold(
           },
       )
 
-      if (BuildConfig.DEBUG) {
-        FloatingActionButton(
-            onClick = { viewModel.showDebugMenu() },
-            modifier = Modifier.align(Alignment.CenterEnd),
+      if (BuildConfig.DEBUG && uiState.isDebugMenuVisible) {
+        ModalBottomSheet(
+            onDismissRequest = { viewModel.hideDebugMenu() },
+            sheetState = bottomSheetState,
+            modifier = Modifier.fillMaxSize(),
         ) {
-          Icon(Icons.Default.BugReport, contentDescription = "Debug Menu")
-        }
-
-        if (uiState.isDebugMenuVisible) {
-          ModalBottomSheet(
-              onDismissRequest = { viewModel.hideDebugMenu() },
-              sheetState = bottomSheetState,
-              modifier = Modifier.fillMaxSize(),
-          ) {
-            MockDeviceKitScreen(modifier = Modifier.fillMaxSize())
-          }
+          MockDeviceKitScreen(modifier = Modifier.fillMaxSize())
         }
       }
     }

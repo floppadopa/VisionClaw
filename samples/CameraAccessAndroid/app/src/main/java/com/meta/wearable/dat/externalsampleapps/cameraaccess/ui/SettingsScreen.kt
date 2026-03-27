@@ -42,6 +42,7 @@ import com.meta.wearable.dat.externalsampleapps.cameraaccess.settings.SettingsMa
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
+    onDebugMenu: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     var geminiAPIKey by remember { mutableStateOf(SettingsManager.geminiAPIKey) }
@@ -205,6 +206,14 @@ fun SettingsScreen(
                     checked = proactiveNotificationsEnabled,
                     onCheckedChange = { proactiveNotificationsEnabled = it },
                 )
+            }
+
+            // Debug menu (only in debug builds)
+            onDebugMenu?.let { onDebug ->
+                SectionHeader("Developer")
+                TextButton(onClick = onDebug) {
+                    Text("Mock Device Kit")
+                }
             }
 
             // Reset
