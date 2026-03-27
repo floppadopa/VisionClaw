@@ -9,7 +9,7 @@ class GeminiSessionViewModel: ObservableObject {
   @Published var errorMessage: String?
   @Published var userTranscript: String = ""
   @Published var aiTranscript: String = ""
-  @Published var messages: [ChatMessage] = []
+  @Published var messages: [ChatMessage] = ChatHistoryStore.load()
   @Published var toolCallStatus: ToolCallStatus = .idle
   @Published var openClawConnectionState: OpenClawConnectionState = .notConfigured
   private let geminiService = GeminiLiveService()
@@ -79,6 +79,7 @@ class GeminiSessionViewModel: ObservableObject {
         }
         self.finalizeCurrentBubbles()
         self.userTranscript = ""
+        ChatHistoryStore.save(self.messages)
       }
     }
 
@@ -254,6 +255,7 @@ class GeminiSessionViewModel: ObservableObject {
     userTranscript = ""
     aiTranscript = ""
     toolCallStatus = .idle
+    ChatHistoryStore.save(messages)
   }
 
   func sendVideoFrameIfThrottled(image: UIImage) {

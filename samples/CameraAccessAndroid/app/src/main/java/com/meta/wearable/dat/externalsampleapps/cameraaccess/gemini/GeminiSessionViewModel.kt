@@ -16,6 +16,7 @@ import com.meta.wearable.dat.externalsampleapps.cameraaccess.openclaw.OpenClawEv
 import com.meta.wearable.dat.externalsampleapps.cameraaccess.openclaw.ToolCallRouter
 import com.meta.wearable.dat.externalsampleapps.cameraaccess.openclaw.ToolCallStatus
 import com.meta.wearable.dat.externalsampleapps.cameraaccess.openclaw.ToolResult
+import com.meta.wearable.dat.externalsampleapps.cameraaccess.chat.ChatHistoryStore
 import com.meta.wearable.dat.externalsampleapps.cameraaccess.gallery.CapturedPhoto
 import com.meta.wearable.dat.externalsampleapps.cameraaccess.gallery.PhotoCaptureStore
 import com.meta.wearable.dat.externalsampleapps.cameraaccess.settings.SettingsManager
@@ -44,7 +45,9 @@ data class GeminiUiState(
 
 class GeminiSessionViewModel(app: Application) : AndroidViewModel(app) {
 
-    private val _uiState = MutableStateFlow(GeminiUiState())
+    private val _uiState = MutableStateFlow(GeminiUiState(
+        messages = ChatHistoryStore.load(app)
+    ))
     val uiState: StateFlow<GeminiUiState> = _uiState.asStateFlow()
 
     private val _captureEvent = MutableStateFlow<CapturedPhoto?>(null)
@@ -198,6 +201,7 @@ class GeminiSessionViewModel(app: Application) : AndroidViewModel(app) {
             }
             finalizeCurrentBubbles()
             _uiState.value = _uiState.value.copy(userTranscript = "")
+            persistMessages()
         }
 
         geminiService.onInputTranscription = input@{ text ->
@@ -442,6 +446,7 @@ class GeminiSessionViewModel(app: Application) : AndroidViewModel(app) {
 
         // Keep message history, just reset session state
         _uiState.value = GeminiUiState(messages = _uiState.value.messages)
+        persistMessages()
         lastUserOriginalInstruction = null
         latestFrameForToolCall = null
         micStateBeforeExecution = null
@@ -493,6 +498,10 @@ class GeminiSessionViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearError() {
         _uiState.value = _uiState.value.copy(errorMessage = null)
+    }
+
+    private fun persistMessages() {
+        ChatHistoryStore.save(getApplication(), _uiState.value.messages)
     }
 
     // Chat message helpers

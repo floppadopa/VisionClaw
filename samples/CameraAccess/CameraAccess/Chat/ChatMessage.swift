@@ -14,6 +14,14 @@ struct ChatMessage: Identifiable, Equatable {
     self.timestamp = Date()
     self.status = status
   }
+
+  init(id: String, role: ChatMessageRole, text: String, timestamp: Date, status: ChatMessageStatus = .complete) {
+    self.id = id
+    self.role = role
+    self.text = text
+    self.timestamp = timestamp
+    self.status = status
+  }
 }
 
 enum ChatMessageRole: Equatable {
