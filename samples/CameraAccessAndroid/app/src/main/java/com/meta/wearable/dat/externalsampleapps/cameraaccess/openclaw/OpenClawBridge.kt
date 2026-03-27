@@ -276,7 +276,7 @@ class OpenClawBridge {
      * Returns the saved file path, or null if upload fails.
      */
     private fun uploadImageFile(imageBase64: String): String? {
-        val uploadPort = GeminiConfig.openClawPort + 3 // upload server runs on gateway port + 3
+        val uploadPort = GeminiConfig.openClawPort + 6 // upload server runs on gateway port + 6
         val host = GeminiConfig.openClawHost.trimEnd('/')
         val url = "$host:$uploadPort/upload"
         return try {
