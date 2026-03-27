@@ -193,6 +193,9 @@ class OpenClawEventClient {
                 put("auth", JSONObject().apply {
                     put("token", GeminiConfig.openClawGatewayToken)
                 })
+                put("scopes", JSONArray().apply {
+                    put("operator.admin")
+                })
             })
         }
         webSocket?.send(connectMsg.toString())

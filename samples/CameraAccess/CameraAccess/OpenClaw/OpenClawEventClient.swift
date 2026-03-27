@@ -149,7 +149,8 @@ class OpenClawEventClient {
         ],
         "auth": [
           "token": GeminiConfig.openClawGatewayToken
-        ]
+        ],
+        "scopes": ["operator.admin"]
       ] as [String: Any]
     ]
 
