@@ -95,6 +95,9 @@ class GeminiSessionViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun syncMicWithToolExecution(status: ToolCallStatus) {
+        // With NON_BLOCKING execute, keep mic on so user can keep talking
+        return
+
         val executing = isToolExecuting(status)
 
         if (executing) {
@@ -178,8 +181,7 @@ class GeminiSessionViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         audioManager.onAudioCaptured = lambda@{ data ->
-            // execute 중에는 mic 입력을 Gemini로 보내지 않음
-            if (isToolExecuting(_uiState.value.toolCallStatus)) return@lambda
+            // NON_BLOCKING: keep sending audio during tool execution
 
             // streamingMode == PHONE 일때 모델이 말하는동안에는 입력을 막음(기존 로직)
             if (streamingMode == StreamingMode.PHONE && geminiService.isModelSpeaking.value) return@lambda
@@ -209,7 +211,7 @@ class GeminiSessionViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         geminiService.onInputTranscription = input@{ text ->
-            if (isToolExecuting(_uiState.value.toolCallStatus)) return@input
+            // NON_BLOCKING: keep accepting input during tool execution
 
             val newTranscript = _uiState.value.userTranscript + text
             lastUserOriginalInstruction = newTranscript
