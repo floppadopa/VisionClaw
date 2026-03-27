@@ -61,8 +61,8 @@ class ToolCallRouter(
                 ?.trim()
                 ?.takeIf { it.isNotEmpty() }
 
-            // Only attach image when Gemini explicitly requests it via include_image=true
-            val includeImage = call.args["include_image"] as? Boolean ?: false
+            // Always attach latest frame when video streaming is enabled
+            val includeImage = call.args["include_image"] as? Boolean ?: SettingsManager.videoStreamingEnabled
             val bitmap = if (includeImage) latestFrameProvider() else null
             Log.d(TAG, "include_image=$includeImage, bitmapNull=${bitmap == null}")
 

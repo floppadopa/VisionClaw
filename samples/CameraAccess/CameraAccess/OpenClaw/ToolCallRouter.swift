@@ -42,7 +42,8 @@ class ToolCallRouter {
 
     let task = Task { @MainActor in
       let taskDesc = call.args["task"] as? String ?? String(describing: call.args)
-      let includeImage = call.args["include_image"] as? Bool ?? false
+      // Always attach latest frame when video streaming is enabled (like Oversite)
+      let includeImage = call.args["include_image"] as? Bool ?? SettingsManager.shared.videoStreamingEnabled
       let image: UIImage? = includeImage ? latestFrame : nil
       let result = await bridge.delegateTask(task: taskDesc, toolName: callName, image: image)
 
