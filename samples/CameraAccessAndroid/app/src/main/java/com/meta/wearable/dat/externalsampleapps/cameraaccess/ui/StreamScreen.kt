@@ -39,10 +39,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -111,12 +114,13 @@ fun StreamScreen(
 
     var videoStreamingEnabled by remember { mutableStateOf(SettingsManager.videoStreamingEnabled) }
     val tabOptions = listOf("Camera", "Chat")
-    var selectedTab by remember { mutableIntStateOf(0) }
+    val pagerState = rememberPagerState(pageCount = { 2 })
+    val coroutineScope = rememberCoroutineScope()
 
     // Auto-switch to chat tab when Gemini starts in audio-only mode
     LaunchedEffect(geminiUiState.isGeminiActive) {
         if (geminiUiState.isGeminiActive && !SettingsManager.videoStreamingEnabled) {
-            selectedTab = 1
+            pagerState.animateScrollToPage(1)
         }
     }
 
@@ -163,35 +167,42 @@ fun StreamScreen(
     }
 
     Box(modifier = modifier.fillMaxSize()) {
-        if (selectedTab == 0) {
-            // --- Camera tab ---
-            streamUiState.videoFrame?.let { videoFrame ->
-                Image(
-                    bitmap = videoFrame.asImageBitmap(),
-                    contentDescription = stringResource(R.string.live_stream),
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                )
-            }
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize(),
+        ) { page ->
+            Box(modifier = Modifier.fillMaxSize()) {
+                if (page == 0) {
+                    // --- Camera tab ---
+                    streamUiState.videoFrame?.let { videoFrame ->
+                        Image(
+                            bitmap = videoFrame.asImageBitmap(),
+                            contentDescription = stringResource(R.string.live_stream),
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop,
+                        )
+                    }
 
-            if (streamUiState.videoFrame == null && !videoStreamingEnabled) {
-                Text(
-                    text = "Audio-only mode\nAll video streaming is off.",
-                    modifier = Modifier.align(Alignment.Center),
-                )
-            }
+                    if (streamUiState.videoFrame == null && !videoStreamingEnabled) {
+                        Text(
+                            text = "Audio-only mode\nAll video streaming is off.",
+                            modifier = Modifier.align(Alignment.Center),
+                        )
+                    }
 
-            if (streamUiState.streamSessionState == StreamSessionState.STARTING) {
-                CircularProgressIndicator(
-                    modifier = Modifier.align(Alignment.Center),
-                )
+                    if (streamUiState.streamSessionState == StreamSessionState.STARTING) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.align(Alignment.Center),
+                        )
+                    }
+                } else {
+                    // --- Chat tab ---
+                    ChatTranscriptView(
+                        messages = geminiUiState.messages,
+                        modifier = Modifier.padding(top = 100.dp, bottom = 80.dp),
+                    )
+                }
             }
-        } else {
-            // --- Chat tab ---
-            ChatTranscriptView(
-                messages = geminiUiState.messages,
-                modifier = Modifier.padding(top = 100.dp, bottom = 80.dp),
-            )
         }
 
         // Overlays + controls
@@ -237,8 +248,8 @@ fun StreamScreen(
                             tabOptions.forEachIndexed { index, label ->
                                 SegmentedButton(
                                     shape = SegmentedButtonDefaults.itemShape(index = index, count = tabOptions.size),
-                                    onClick = { selectedTab = index },
-                                    selected = selectedTab == index,
+                                    onClick = { coroutineScope.launch { pagerState.animateScrollToPage(index) } },
+                                    selected = pagerState.currentPage == index,
                                 ) {
                                     Text(label)
                                 }
@@ -249,12 +260,12 @@ fun StreamScreen(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 // Gemini overlay (camera tab only)
-                if (geminiUiState.isGeminiActive && selectedTab == 0) {
+                if (geminiUiState.isGeminiActive && pagerState.currentPage == 0) {
                     GeminiOverlay(uiState = geminiUiState)
                 }
 
                 // WebRTC overlay
-                if (webrtcUiState.isActive && selectedTab == 0) {
+                if (webrtcUiState.isActive && pagerState.currentPage == 0) {
                     Spacer(modifier = Modifier.height(4.dp))
                     WebRTCOverlay(uiState = webrtcUiState)
                 }
