@@ -241,6 +241,9 @@ class GeminiSessionViewModel(app: Application) : AndroidViewModel(app) {
             openClawBridge.resetSession()
             openClawBridge.eventClient = eventClient
 
+            // Connect event client early — needed for image sending via chat.send
+            syncProactiveNotifications()
+
             toolCallRouter = ToolCallRouter(
                 bridge = openClawBridge,
                 scope = viewModelScope,
@@ -339,7 +342,6 @@ class GeminiSessionViewModel(app: Application) : AndroidViewModel(app) {
                     audioManager.startCapture()
                     audioManager.setMicEnabled(_uiState.value.isMicEnabled)
                     _uiState.value = _uiState.value.copy(errorMessage = null)
-                    syncProactiveNotifications()
                 } catch (e: Exception) {
                     _uiState.value = _uiState.value.copy(
                         errorMessage = "Mic capture failed: ${e.message}"
