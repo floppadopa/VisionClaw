@@ -434,6 +434,7 @@ class GeminiSessionViewModel(app: Application) : AndroidViewModel(app) {
         netMonitorJob = null
         netMonitor.stop()
 
+        // Clear all messages — any in-progress tool calls are cancelled
         _uiState.value = GeminiUiState()
         lastUserOriginalInstruction = null
         latestFrameForToolCall = null
