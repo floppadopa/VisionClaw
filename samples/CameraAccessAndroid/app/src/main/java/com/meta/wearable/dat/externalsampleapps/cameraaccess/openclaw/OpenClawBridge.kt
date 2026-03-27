@@ -272,8 +272,42 @@ class OpenClawBridge {
     }
 
     /**
+     * Upload JPEG to the upload server so the agent can access the file on disk.
+     * Returns the saved file path, or null if upload fails.
+     */
+    private fun uploadImageFile(imageBase64: String): String? {
+        val uploadPort = GeminiConfig.openClawPort + 3 // upload server runs on gateway port + 3
+        val host = GeminiConfig.openClawHost.trimEnd('/')
+        val url = "$host:$uploadPort/upload"
+        return try {
+            val jpegBytes = android.util.Base64.decode(imageBase64, android.util.Base64.NO_WRAP)
+            val request = Request.Builder()
+                .url(url)
+                .post(jpegBytes.toRequestBody("image/jpeg".toMediaType()))
+                .build()
+            val response = pingClient.newCall(request).execute()
+            val body = response.body?.string() ?: ""
+            response.close()
+            if (response.code in 200..299) {
+                val json = JSONObject(body)
+                val path = json.optString("path", "")
+                if (path.isNotEmpty()) {
+                    Log.d(TAG, "Image uploaded to: $path")
+                    path
+                } else null
+            } else {
+                Log.w(TAG, "Image upload HTTP ${response.code}")
+                null
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Image upload failed: ${e.message}")
+            null
+        }
+    }
+
+    /**
      * Send a task with image via WebSocket chat.send RPC.
-     * This is the only method that reliably passes images to the OpenClaw agent.
+     * Also uploads the image file to disk so the agent can access it.
      */
     private suspend fun sendViaWebSocket(
         eventClient: OpenClawEventClient,
@@ -281,9 +315,15 @@ class OpenClawBridge {
         imageBase64: String,
         toolName: String
     ): ToolResult = suspendCancellableCoroutine { continuation ->
+        // Upload image to disk so agent can read/copy/save the file
+        val filePath = uploadImageFile(imageBase64)
+        val taskWithPath = if (filePath != null) {
+            "$task\n\n[image_file_path]\n$filePath"
+        } else task
+
         eventClient.sendChatMessage(
             sessionKey = sessionKey,
-            message = task,
+            message = taskWithPath,
             imageBase64 = imageBase64
         ) { reply ->
             if (reply != null) {
