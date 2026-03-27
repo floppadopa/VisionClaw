@@ -26,6 +26,8 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.VideocamOff
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -210,20 +212,24 @@ fun StreamScreen(
             // Top overlays (below status bar)
             Column(modifier = Modifier.align(Alignment.TopStart).statusBarsPadding().padding(top = 8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    FilterChip(
-                        selected = !videoStreamingEnabled,
-                        onClick = {
+                    Surface(
+                        shape = CircleShape,
+                        color = Color.Black.copy(alpha = 0.5f),
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        IconButton(onClick = {
                             val newEnabled = !videoStreamingEnabled
                             videoStreamingEnabled = newEnabled
                             streamViewModel.setVideoStreamingEnabled(newEnabled, lifecycleOwner)
-                        },
-                        label = {
-                            Text(
-                                if (videoStreamingEnabled) "Switch to audio-only" else "Enable video"
+                        }) {
+                            Icon(
+                                imageVector = if (videoStreamingEnabled) Icons.Default.Videocam else Icons.Default.VideocamOff,
+                                contentDescription = if (videoStreamingEnabled) "Switch to audio-only" else "Enable video",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
                             )
-                        },
-                        modifier = Modifier.widthIn(min = 160.dp),
-                    )
+                        }
+                    }
 
                     Spacer(modifier = Modifier.weight(1f))
 
