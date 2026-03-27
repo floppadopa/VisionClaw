@@ -297,6 +297,8 @@ class GeminiSessionViewModel(app: Application) : AndroidViewModel(app) {
                             if (it.id == toolMsg.id) it.copy(text = "Done", status = ChatMessageStatus.Complete) else it
                         }
                         _uiState.value = _uiState.value.copy(messages = updated)
+                        // Reset active bubbles so post-tool AI text goes into a new bubble
+                        finalizeCurrentBubbles()
                         geminiService.sendToolResponse(response)
                     }
                 }
