@@ -68,7 +68,7 @@ class GeminiLiveService {
     // If you want, change 10 -> 30/60.
     private val client = OkHttpClient.Builder()
         .readTimeout(0, TimeUnit.MILLISECONDS)
-        .pingInterval(10, TimeUnit.SECONDS)
+        .pingInterval(30, TimeUnit.SECONDS)
         .retryOnConnectionFailure(true)
         .build()
 
