@@ -20,6 +20,7 @@ enum ChatMessageRole: Equatable {
   case user
   case assistant
   case toolCall(String) // tool name
+  case sessionDivider  // separator between sessions
 }
 
 enum ChatMessageStatus: Equatable {

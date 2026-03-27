@@ -151,8 +151,14 @@ class GeminiSessionViewModel(app: Application) : AndroidViewModel(app) {
         micStateBeforeExecution = null
         micAutoMutedForExecution = false
 
+        // Insert session divider if there are previous messages
+        val currentMessages = _uiState.value.messages.toMutableList()
+        if (currentMessages.isNotEmpty()) {
+            currentMessages.add(ChatMessage(role = ChatMessageRole.SessionDivider, text = ""))
+        }
+
         // Start with mic enabled by default
-        _uiState.value = _uiState.value.copy(isGeminiActive = true, isMicEnabled = true)
+        _uiState.value = _uiState.value.copy(isGeminiActive = true, isMicEnabled = true, messages = currentMessages)
         audioManager.setMicEnabled(true)
         RemoteLogger.log("session:start")
 
@@ -434,8 +440,8 @@ class GeminiSessionViewModel(app: Application) : AndroidViewModel(app) {
         netMonitorJob = null
         netMonitor.stop()
 
-        // Clear all messages — any in-progress tool calls are cancelled
-        _uiState.value = GeminiUiState()
+        // Keep message history, just reset session state
+        _uiState.value = GeminiUiState(messages = _uiState.value.messages)
         lastUserOriginalInstruction = null
         latestFrameForToolCall = null
         micStateBeforeExecution = null

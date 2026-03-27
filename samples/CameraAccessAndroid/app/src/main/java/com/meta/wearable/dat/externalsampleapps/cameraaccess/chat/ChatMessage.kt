@@ -14,6 +14,7 @@ sealed class ChatMessageRole {
     data object User : ChatMessageRole()
     data object Assistant : ChatMessageRole()
     data class ToolCall(val name: String) : ChatMessageRole()
+    data object SessionDivider : ChatMessageRole()
 }
 
 sealed class ChatMessageStatus {

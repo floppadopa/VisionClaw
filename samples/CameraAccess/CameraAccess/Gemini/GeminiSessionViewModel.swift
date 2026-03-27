@@ -42,6 +42,11 @@ class GeminiSessionViewModel: ObservableObject {
     isGeminiActive = true
     RemoteLogger.shared.log("session:start")
 
+    // Insert session divider if there are previous messages
+    if !messages.isEmpty {
+      messages.append(ChatMessage(role: .sessionDivider, text: ""))
+    }
+
     // Wire audio callbacks
     audioManager.onAudioCaptured = { [weak self] data in
       guard let self else { return }
