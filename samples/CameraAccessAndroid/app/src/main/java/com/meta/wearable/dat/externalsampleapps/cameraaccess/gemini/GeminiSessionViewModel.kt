@@ -261,18 +261,16 @@ class GeminiSessionViewModel(app: Application) : AndroidViewModel(app) {
                     if (photo != null) {
                         _captureEvent.value = photo
                         // Also upload to Mac so agent can access the file
-                        viewModelScope.launch {
-                            try {
+                        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                            val macPath = try {
                                 val baos = java.io.ByteArrayOutputStream()
                                 frame.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, baos)
                                 val base64 = android.util.Base64.encodeToString(baos.toByteArray(), android.util.Base64.NO_WRAP)
-                                val macPath = openClawBridge.uploadImageFilePublic(base64)
-                                if (macPath != null) {
-                                    completion(ToolResult.Success("Photo captured and saved: ${photo.filename}\nAlso saved on Mac at: $macPath"))
-                                } else {
-                                    completion(ToolResult.Success("Photo captured and saved: ${photo.filename}"))
-                                }
-                            } catch (e: Exception) {
+                                openClawBridge.uploadImageFilePublic(base64)
+                            } catch (e: Exception) { null }
+                            if (macPath != null) {
+                                completion(ToolResult.Success("Photo captured and saved: ${photo.filename}\nAlso saved on Mac at: $macPath"))
+                            } else {
                                 completion(ToolResult.Success("Photo captured and saved: ${photo.filename}"))
                             }
                         }
