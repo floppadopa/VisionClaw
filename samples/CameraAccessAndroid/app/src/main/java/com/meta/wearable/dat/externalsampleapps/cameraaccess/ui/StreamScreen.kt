@@ -99,16 +99,6 @@ fun StreamScreen(
         }
     }
 
-    // Gallery screens
-    if (selectedGalleryPhoto != null) {
-        GalleryDetailScreen(photo = selectedGalleryPhoto!!, onBack = { selectedGalleryPhoto = null })
-        return
-    }
-    if (showGallery) {
-        GalleryScreen(onBack = { showGallery = false }, onPhotoSelected = { selectedGalleryPhoto = it })
-        return
-    }
-
     // Wire Gemini VM to Stream VM for frame forwarding
     LaunchedEffect(geminiViewModel) {
         streamViewModel.geminiViewModel = geminiViewModel
@@ -314,6 +304,21 @@ fun StreamScreen(
                     streamViewModel.sharePhoto(bitmap)
                     streamViewModel.hideShareDialog()
                 },
+            )
+        }
+    }
+
+    // Gallery as full-screen overlay (not replacing StreamScreen, so session stays alive)
+    if (showGallery || selectedGalleryPhoto != null) {
+        if (selectedGalleryPhoto != null) {
+            GalleryDetailScreen(
+                photo = selectedGalleryPhoto!!,
+                onBack = { selectedGalleryPhoto = null }
+            )
+        } else {
+            GalleryScreen(
+                onBack = { showGallery = false },
+                onPhotoSelected = { selectedGalleryPhoto = it }
             )
         }
     }
