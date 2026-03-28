@@ -37,12 +37,16 @@ object ChatHistoryStore {
             val messages = mutableListOf<ChatMessage>()
             for (i in 0 until json.length()) {
                 val obj = json.getJSONObject(i)
+                val rawStatus = obj.optString("status", "complete")
+                val text = obj.optString("text", "")
+                // Fix stale "Executing..." messages from interrupted sessions
+                val fixedText = if (rawStatus == "streaming" && text == "Executing...") "Cancelled" else text
                 messages.add(ChatMessage(
                     id = obj.getString("id"),
                     role = deserializeRole(obj.getString("role")),
-                    text = obj.optString("text", ""),
+                    text = fixedText,
                     timestamp = obj.getLong("timestamp"),
-                    status = deserializeStatus(obj.optString("status", "complete")),
+                    status = deserializeStatus(rawStatus),
                 ))
             }
             Log.d(TAG, "Loaded ${messages.size} messages")
