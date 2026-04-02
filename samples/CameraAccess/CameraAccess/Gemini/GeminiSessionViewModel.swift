@@ -176,7 +176,8 @@ class GeminiSessionViewModel: ObservableObject {
               self.messages[idx].text = "Done"
               self.messages[idx].status = .complete
             }
-            RemoteLogger.shared.log("voice:tool_result", data: ["tool": call.name, "result": String(response.prefix(500))])
+            let resultStr = String(describing: response).prefix(500)
+            RemoteLogger.shared.log("voice:tool_result", data: ["tool": call.name, "result": String(resultStr)])
             // Reset active bubbles so post-tool AI text goes into a new bubble
             self.finalizeCurrentBubbles()
             self.geminiService.sendToolResponse(response)
