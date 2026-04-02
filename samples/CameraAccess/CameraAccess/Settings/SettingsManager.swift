@@ -16,6 +16,8 @@ final class SettingsManager {
     case speakerOutputEnabled
     case videoStreamingEnabled
     case proactiveNotificationsEnabled
+    case mmDuet2ServerURL
+    case aiBackend
   }
 
   private init() {}
@@ -85,13 +87,27 @@ final class SettingsManager {
     set { defaults.set(newValue, forKey: Key.proactiveNotificationsEnabled.rawValue) }
   }
 
+  // MARK: - MMDuet2
+
+  var mmDuet2ServerURL: String {
+    get { defaults.string(forKey: Key.mmDuet2ServerURL.rawValue) ?? Secrets.mmDuet2ServerURL }
+    set { defaults.set(newValue, forKey: Key.mmDuet2ServerURL.rawValue) }
+  }
+
+  // MARK: - AI Backend
+
+  var aiBackend: String {
+    get { defaults.string(forKey: Key.aiBackend.rawValue) ?? "gemini" }
+    set { defaults.set(newValue, forKey: Key.aiBackend.rawValue) }
+  }
+
   // MARK: - Reset
 
   func resetAll() {
     for key in [Key.geminiAPIKey, .geminiSystemPrompt, .openClawHost, .openClawPort,
                 .openClawHookToken, .openClawGatewayToken, .webrtcSignalingURL,
                 .speakerOutputEnabled, .videoStreamingEnabled,
-                .proactiveNotificationsEnabled] {
+                .proactiveNotificationsEnabled, .mmDuet2ServerURL, .aiBackend] {
       defaults.removeObject(forKey: key.rawValue)
     }
   }

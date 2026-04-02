@@ -14,11 +14,36 @@ struct SettingsView: View {
   @State private var speakerOutputEnabled: Bool = false
   @State private var videoStreamingEnabled: Bool = true
   @State private var proactiveNotificationsEnabled: Bool = true
+  @State private var mmDuet2ServerURL: String = ""
+  @State private var aiBackend: String = "gemini"
   @State private var showResetConfirmation = false
 
   var body: some View {
     NavigationView {
       Form {
+        Section(header: Text("AI Backend"), footer: Text("Choose between Gemini (voice + vision) and MMDuet2 (proactive video AI).")) {
+          Picker("Backend", selection: $aiBackend) {
+            Text("Gemini").tag("gemini")
+            Text("MMDuet2").tag("mmduet2")
+          }
+          .pickerStyle(.segmented)
+        }
+
+        if aiBackend == "mmduet2" {
+          Section(header: Text("MMDuet2"), footer: Text("URL of the MMDuet2 API server (e.g. http://your-gpu-server:8000). Set up SSH tunnel or use a public IP.")) {
+            VStack(alignment: .leading, spacing: 4) {
+              Text("Server URL")
+                .font(.caption)
+                .foregroundColor(.secondary)
+              TextField("http://server:8000", text: $mmDuet2ServerURL)
+                .autocapitalization(.none)
+                .disableAutocorrection(true)
+                .keyboardType(.URL)
+                .font(.system(.body, design: .monospaced))
+            }
+          }
+        }
+
         Section(header: Text("Gemini API")) {
           VStack(alignment: .leading, spacing: 4) {
             Text("API Key")
@@ -153,6 +178,8 @@ struct SettingsView: View {
     speakerOutputEnabled = settings.speakerOutputEnabled
     videoStreamingEnabled = settings.videoStreamingEnabled
     proactiveNotificationsEnabled = settings.proactiveNotificationsEnabled
+    mmDuet2ServerURL = settings.mmDuet2ServerURL
+    aiBackend = settings.aiBackend
   }
 
   private func save() {
@@ -168,5 +195,7 @@ struct SettingsView: View {
     settings.speakerOutputEnabled = speakerOutputEnabled
     settings.videoStreamingEnabled = videoStreamingEnabled
     settings.proactiveNotificationsEnabled = proactiveNotificationsEnabled
+    settings.mmDuet2ServerURL = mmDuet2ServerURL.trimmingCharacters(in: .whitespacesAndNewlines)
+    settings.aiBackend = aiBackend
   }
 }

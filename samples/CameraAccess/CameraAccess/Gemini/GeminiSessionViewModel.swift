@@ -13,6 +13,7 @@ class GeminiSessionViewModel: ObservableObject {
   @Published var toolCallStatus: ToolCallStatus = .idle
   @Published var openClawConnectionState: OpenClawConnectionState = .notConfigured
   private let geminiService = GeminiLiveService()
+  private let mmDuet2Service = MMDuet2Service()
   private let openClawBridge = OpenClawBridge()
   private var toolCallRouter: ToolCallRouter?
   private let audioManager = AudioManager()
@@ -22,6 +23,7 @@ class GeminiSessionViewModel: ObservableObject {
   private let photoCaptureStore = PhotoCaptureStore.shared
   @Published var lastCapturedPhoto: CapturedPhoto?
   private var stateObservation: Task<Void, Never>?
+  private var isMMDuet2Mode: Bool { SettingsManager.shared.aiBackend == "mmduet2" }
 
   // Chat message tracking
   private var activeUserBubbleId: String?
@@ -33,6 +35,11 @@ class GeminiSessionViewModel: ObservableObject {
 
   func startSession() async {
     guard !isGeminiActive else { return }
+
+    if isMMDuet2Mode {
+      await startMMDuet2Session()
+      return
+    }
 
     guard GeminiConfig.isConfigured else {
       errorMessage = "Gemini API key not configured. Open GeminiConfig.swift and replace YOUR_GEMINI_API_KEY with your key from https://aistudio.google.com/apikey"
@@ -261,6 +268,7 @@ class GeminiSessionViewModel: ObservableObject {
     toolCallRouter = nil
     audioManager.stopCapture()
     geminiService.disconnect()
+    mmDuet2Service.disconnect()
     stateObservation?.cancel()
     stateObservation = nil
     isGeminiActive = false
@@ -277,11 +285,26 @@ class GeminiSessionViewModel: ObservableObject {
     latestVideoFrame = image
     toolCallRouter?.latestFrame = image
     guard SettingsManager.shared.videoStreamingEnabled else { return }
-    guard isGeminiActive, connectionState == .ready else { return }
+    guard isGeminiActive else { return }
     let now = Date()
     guard now.timeIntervalSince(lastVideoFrameTime) >= GeminiConfig.videoFrameInterval else { return }
     lastVideoFrameTime = now
-    geminiService.sendVideoFrame(image: image)
+
+    if isMMDuet2Mode {
+      guard mmDuet2Service.connectionState == .ready else { return }
+      mmDuet2Service.sendVideoFrame(image: image)
+    } else {
+      guard connectionState == .ready else { return }
+      geminiService.sendVideoFrame(image: image)
+    }
+  }
+
+  func sendTextToMMDuet2(_ text: String) {
+    guard isMMDuet2Mode, mmDuet2Service.connectionState == .ready else { return }
+    mmDuet2Service.sendText(text)
+    let msg = ChatMessage(role: .user, text: text)
+    messages.append(msg)
+    ChatHistoryStore.save(messages)
   }
 
   // MARK: - Chat message helpers
@@ -317,6 +340,60 @@ class GeminiSessionViewModel: ObservableObject {
       activeAIBubbleId = msg.id
     }
     lastAIText = text
+  }
+
+  // MARK: - MMDuet2 Session
+
+  private func startMMDuet2Session() async {
+    let serverURL = SettingsManager.shared.mmDuet2ServerURL
+    guard serverURL != "http://YOUR_MMDUET2_SERVER:8000" && !serverURL.isEmpty else {
+      errorMessage = "MMDuet2 server URL not configured. Set it in Settings."
+      return
+    }
+
+    isGeminiActive = true
+
+    if !messages.isEmpty {
+      messages.append(ChatMessage(role: .sessionDivider, text: ""))
+    }
+
+    mmDuet2Service.onProactiveResponse = { [weak self] content, time in
+      guard let self else { return }
+      let text = "[\(Int(time))s] \(content)"
+      let msg = ChatMessage(role: .assistant, text: text)
+      self.messages.append(msg)
+      ChatHistoryStore.save(self.messages)
+    }
+
+    let setupOk = await mmDuet2Service.connect()
+    if !setupOk {
+      let msg: String
+      if case .error(let err) = mmDuet2Service.connectionState {
+        msg = err
+      } else {
+        msg = "Failed to connect to MMDuet2 server"
+      }
+      errorMessage = msg
+      isGeminiActive = false
+      return
+    }
+
+    // Map MMDuet2 state to Gemini state for UI compatibility
+    connectionState = .ready
+
+    stateObservation = Task { [weak self] in
+      guard let self else { return }
+      while !Task.isCancelled {
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        guard !Task.isCancelled else { break }
+        switch self.mmDuet2Service.connectionState {
+        case .ready: self.connectionState = .ready
+        case .connecting: self.connectionState = .connecting
+        case .error(let e): self.connectionState = .error(e)
+        case .disconnected: self.connectionState = .disconnected
+        }
+      }
+    }
   }
 
   private func finalizeCurrentBubbles() {
