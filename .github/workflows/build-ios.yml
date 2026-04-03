@@ -1,0 +1,102 @@
+name: Build VisionClaw iOS (unsigned IPA)
+
+on:
+  workflow_dispatch:
+    inputs:
+      gemini_api_key:
+        description: "Gemini API key (or leave empty to use repo secret)"
+        required: false
+        type: string
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          # Use latest available Xcode on the runner
+          XCODE_PATH=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
+          echo "Using Xcode at: $XCODE_PATH"
+          sudo xcode-select -s "$XCODE_PATH"
+          xcodebuild -version
+
+      - name: Create Secrets.swift
+        run: |
+          API_KEY="${{ inputs.gemini_api_key }}"
+          if [ -z "$API_KEY" ]; then
+            API_KEY="${{ secrets.GEMINI_API_KEY }}"
+          fi
+          if [ -z "$API_KEY" ]; then
+            API_KEY="YOUR_GEMINI_API_KEY"
+            echo "⚠️  No API key provided. You can add it later in the app's Settings screen."
+          fi
+
+          cat > samples/CameraAccess/CameraAccess/Secrets.swift << SWIFT_EOF
+          import Foundation
+
+          enum Secrets {
+            static let geminiAPIKey = "$API_KEY"
+            static let openClawHost = "http://placeholder.local"
+            static let openClawPort = 18789
+            static let openClawHookToken = "placeholder"
+            static let openClawGatewayToken = "placeholder"
+            static let webrtcSignalingURL = "ws://placeholder:8080"
+          }
+          SWIFT_EOF
+
+          echo "Secrets.swift created."
+
+      - name: Resolve Swift packages
+        working-directory: samples/CameraAccess
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project CameraAccess.xcodeproj \
+            -scheme CameraAccess \
+            -clonedSourcePackagesDirPath ../spm_cache
+
+      - name: Build for device (unsigned)
+        working-directory: samples/CameraAccess
+        run: |
+          xcodebuild build \
+            -project CameraAccess.xcodeproj \
+            -scheme CameraAccess \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            -clonedSourcePackagesDirPath ../spm_cache \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY="-" \
+            DEVELOPMENT_TEAM="" \
+            PRODUCT_BUNDLE_IDENTIFIER="com.visionclaw.app" \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGNING_REQUIRED=NO
+
+      - name: Package unsigned IPA
+        working-directory: samples/CameraAccess
+        run: |
+          APP_PATH=$(find build/Build/Products/Release-iphoneos -name "*.app" -type d | head -1)
+          if [ -z "$APP_PATH" ]; then
+            echo "ERROR: .app not found"
+            find build -name "*.app" -type d
+            exit 1
+          fi
+          echo "Found app at: $APP_PATH"
+
+          mkdir -p ipa/Payload
+          cp -r "$APP_PATH" ipa/Payload/
+          cd ipa
+          zip -r ../VisionClaw-unsigned.ipa Payload
+          echo "IPA created: VisionClaw-unsigned.ipa"
+          ls -lh ../VisionClaw-unsigned.ipa
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VisionClaw-unsigned-IPA
+          path: samples/CameraAccess/VisionClaw-unsigned.ipa
+          retention-days: 30
