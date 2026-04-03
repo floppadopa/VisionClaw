@@ -373,6 +373,9 @@ class GeminiSessionViewModel: ObservableObject {
       ChatHistoryStore.save(self.messages)
     }
 
+    // Reset server state for a fresh session
+    await mmDuet2Service.reset()
+
     let setupOk = await mmDuet2Service.connect()
     if !setupOk {
       let msg: String
