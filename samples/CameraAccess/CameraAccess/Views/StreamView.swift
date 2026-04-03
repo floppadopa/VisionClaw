@@ -234,60 +234,123 @@ struct ControlsView: View {
   @ObservedObject var geminiVM: GeminiSessionViewModel
   @ObservedObject var webrtcVM: WebRTCSessionViewModel
 
+  private var isMMDuet2Mode: Bool { SettingsManager.shared.aiBackend == "mmduet2" }
+
   var body: some View {
-    // Controls row
-    HStack(spacing: 8) {
-      CustomButton(
-        title: "Stop streaming",
-        style: .destructive,
-        isDisabled: false
-      ) {
-        Task {
-          await viewModel.stopSession()
-        }
+    VStack(spacing: 12) {
+      // MMDuet2 text input bar
+      if isMMDuet2Mode && geminiVM.isGeminiActive {
+        MMDuet2InputBar(geminiVM: geminiVM)
       }
 
-      // Photo button (glasses mode only -- DAT SDK capture)
-      if viewModel.streamingMode == .glasses {
-        CircleButton(icon: "camera.fill", text: nil) {
-          viewModel.capturePhoto()
-        }
-      }
-
-      // Gemini AI button (disabled when WebRTC is active — audio conflict)
-      CircleButton(
-        icon: geminiVM.isGeminiActive ? "waveform.circle.fill" : "waveform.circle",
-        text: "AI"
-      ) {
-        Task {
-          if geminiVM.isGeminiActive {
-            geminiVM.stopSession()
-          } else {
-            await geminiVM.startSession()
+      // Controls row
+      HStack(spacing: 8) {
+        CustomButton(
+          title: "Stop streaming",
+          style: .destructive,
+          isDisabled: false
+        ) {
+          Task {
+            await viewModel.stopSession()
           }
         }
-      }
-      .opacity(webrtcVM.isActive ? 0.4 : 1.0)
-      .disabled(webrtcVM.isActive)
 
-      // WebRTC Live Stream button (disabled when Gemini is active — audio conflict)
-      CircleButton(
-        icon: webrtcVM.isActive
-          ? "antenna.radiowaves.left.and.right.circle.fill"
-          : "antenna.radiowaves.left.and.right.circle",
-        text: "Live"
-      ) {
-        Task {
-          if webrtcVM.isActive {
-            webrtcVM.stopSession()
-          } else {
-            await webrtcVM.startSession()
+        // Photo button (glasses mode only -- DAT SDK capture)
+        if viewModel.streamingMode == .glasses {
+          CircleButton(icon: "camera.fill", text: nil) {
+            viewModel.capturePhoto()
           }
         }
+
+        // Gemini AI button (disabled when WebRTC is active — audio conflict)
+        CircleButton(
+          icon: geminiVM.isGeminiActive ? "waveform.circle.fill" : "waveform.circle",
+          text: "AI"
+        ) {
+          Task {
+            if geminiVM.isGeminiActive {
+              geminiVM.stopSession()
+            } else {
+              await geminiVM.startSession()
+            }
+          }
+        }
+        .opacity(webrtcVM.isActive ? 0.4 : 1.0)
+        .disabled(webrtcVM.isActive)
+
+        // WebRTC Live Stream button (disabled when Gemini is active — audio conflict)
+        if !isMMDuet2Mode {
+          CircleButton(
+            icon: webrtcVM.isActive
+              ? "antenna.radiowaves.left.and.right.circle.fill"
+              : "antenna.radiowaves.left.and.right.circle",
+            text: "Live"
+          ) {
+            Task {
+              if webrtcVM.isActive {
+                webrtcVM.stopSession()
+              } else {
+                await webrtcVM.startSession()
+              }
+            }
+          }
+          .opacity(geminiVM.isGeminiActive ? 0.4 : 1.0)
+          .disabled(geminiVM.isGeminiActive)
+        }
       }
-      .opacity(geminiVM.isGeminiActive ? 0.4 : 1.0)
-      .disabled(geminiVM.isGeminiActive)
     }
+  }
+}
+
+// Text input bar for MMDuet2 mode
+struct MMDuet2InputBar: View {
+  @ObservedObject var geminiVM: GeminiSessionViewModel
+  @State private var inputText: String = ""
+  @FocusState private var isFocused: Bool
+
+  var body: some View {
+    HStack(spacing: 8) {
+      // Reset button
+      Button {
+        Task { await geminiVM.resetMMDuet2() }
+      } label: {
+        Image(systemName: "arrow.counterclockwise")
+          .font(.system(size: 16, weight: .medium))
+          .foregroundColor(.white)
+          .frame(width: 36, height: 36)
+          .background(Color.red.opacity(0.7))
+          .clipShape(Circle())
+      }
+
+      // Text field
+      TextField("Ask a question...", text: $inputText)
+        .focused($isFocused)
+        .textFieldStyle(.plain)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color.white.opacity(0.15))
+        .cornerRadius(20)
+        .foregroundColor(.white)
+        .submitLabel(.send)
+        .onSubmit { send() }
+
+      // Send button
+      Button {
+        send()
+      } label: {
+        Image(systemName: "arrow.up.circle.fill")
+          .font(.system(size: 32))
+          .foregroundColor(inputText.isEmpty ? .gray : .white)
+      }
+      .disabled(inputText.isEmpty)
+    }
+  }
+
+  private func send() {
+    let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !text.isEmpty else { return }
+    geminiVM.sendTextToMMDuet2(text)
+    inputText = ""
   }
 }
 

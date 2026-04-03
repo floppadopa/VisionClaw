@@ -308,6 +308,13 @@ class GeminiSessionViewModel: ObservableObject {
     ChatHistoryStore.save(messages)
   }
 
+  func resetMMDuet2() async {
+    guard isMMDuet2Mode else { return }
+    await mmDuet2Service.reset()
+    messages.append(ChatMessage(role: .sessionDivider, text: ""))
+    ChatHistoryStore.save(messages)
+  }
+
   // MARK: - Chat message helpers
 
   private func updateUserBubble(_ text: String) {
